@@ -1,0 +1,193 @@
+import os
+import boto3
+import json
+
+from botocore.exceptions import ClientError
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
+from html.parser import HTMLParser
+
+
+
+client = boto3.client('ses')
+pinpointClient = boto3.client('pinpoint')
+SegmentAttributes = []
+#s3 = boto3.resource('s3')
+s3 = boto3.client("s3")
+
+
+
+def ReadPDFFromS3Bucket():
+	bucket_name ="pinpoint.segment.bucket.binu.test"
+	item_name = "Discovery Questionnaire _ Stride Chat App[2] copy.pdf"
+	BUCKET_NAME = bucket_name
+	KEY = item_name
+	FILE_NAME = os.path.basename(KEY) 
+	TMP_FILE_NAME = '/tmp/' +FILE_NAME
+	s3.download_file(BUCKET_NAME, KEY, TMP_FILE_NAME)
+	ATTACHMENT = TMP_FILE_NAME
+	
+	att = MIMEApplication(open(ATTACHMENT, 'rb').read())
+	
+	return att
+
+def getCampaignTemplate(applicationID,templateName):
+	
+	response = pinpointClient.get_email_template(
+    TemplateName=templateName
+	)
+	subject = response['EmailTemplateResponse']['Subject']
+	return response
+
+class MyHTMLParser(HTMLParser):
+
+    def handle_starttag(self, tag, attrs):
+        return
+        #print("Encountered a start tag:", tag)
+
+    def handle_endtag(self, tag):
+    	return
+        #print("Encountered an end tag :", tag)
+
+    def handle_data(self, data):
+    	if ('{{' in data):
+        	StartPos = data.index("{{")
+        	EndPos = data.index("}}") + 2
+        	SegmentAttributes.append(data[StartPos:EndPos])
+
+
+def updateEndpointInactive(RECIPIENT,endpoint_id,ErrorMessage,application_id):
+	response = ""
+
+	endpoint_attribute = "EndpointStatus"
+	values = ["INACTIVE"]
+	response = pinpointClient.update_endpoint(
+                ApplicationId=application_id,
+                EndpointId=endpoint_id,
+                EndpointRequest={
+                    'Attributes': {
+                        endpoint_attribute: values
+                    }
+                }
+            )    
+	return response
+        
+def sendeMailwithAttachment(SENDER,RECIPIENT,SUBJECT,BODY_TEXT,BODY_HTML,ATTACHMENT,DEBUG,endpointID,FILENAME,ApplicationId):
+	CHARSET = 'utf-8'
+	
+	# Create a multipart/mixed parent container.
+	msg = MIMEMultipart('mixed')
+	# Add subject, from and to lines.
+	msg['Subject'] = SUBJECT 
+	msg['From'] = SENDER 
+	msg['To'] = RECIPIENT
+
+	# Create a multipart/alternative child container.
+	msg_body = MIMEMultipart('alternative')
+
+	# Encode the text and HTML content and set the character encoding. This step is
+	# necessary if you're sending a message with characters outside the ASCII range.
+	textpart = MIMEText(BODY_TEXT.encode(CHARSET), 'plain', CHARSET)
+	htmlpart = MIMEText(BODY_HTML.encode(CHARSET), 'html', CHARSET)
+
+	# Add the text and HTML parts to the child container.
+	msg_body.attach(textpart)
+	msg_body.attach(htmlpart)
+
+	# Define the attachment part and encode it using MIMEApplication.
+	print("Going to read attachment")
+	# Add a header to tell the email client to treat this part as an attachment, and to give the attachment a name.
+	att = ATTACHMENT
+	att.add_header('Content-Disposition','attachment',filename=FILENAME)
+	
+	# Attach the multipart/alternative child container to the multipart/mixed parent container.
+	msg.attach(msg_body)
+
+	# Add the attachment to the parent container.
+	msg.attach(att)
+	response = ''
+	if DEBUG == 'NO':
+		try:
+			#Provide the contents of the email.
+			response = client.send_raw_email(
+				Source=SENDER,
+				Destinations=[
+					RECIPIENT
+				],
+				RawMessage={
+					'Data':msg.as_string(),
+				}
+			)
+		# Display an error if something goes wrong.	
+		except ClientError as e:
+			updateEndpointInactive(RECIPIENT,endpointID,e.response['Error']['Message'],ApplicationId)
+			print(e.response['Error']['Message'])
+		else:
+			print('Email sent to ' + RECIPIENT  + '! Message ID: ' + response['MessageId'])
+
+	return response
+	
+def extractUserAttributes(BODY_HTML):
+	parser = MyHTMLParser()
+	parser.feed(BODY_HTML)
+
+	return SegmentAttributes
+
+def SubstituteVariables(BODY_HTML,userAttributes,item,endpoints):
+	for attribute in userAttributes:
+		temp1 = attribute.replace("{{","")
+		temp2 = temp1.replace("}}","")
+		temp3 = temp2.split(".")
+		endpointID = item
+		appendString = "endpoints[item]"
+		temp4 = endpoints[item]
+		for field in temp3:
+			temp4 = temp4[field]	
+		BODY_HTML = BODY_HTML.replace(attribute,''.join(temp4))
+	
+	return BODY_HTML
+		
+	
+def lambda_handler(event, context):
+	print(json.dumps(event))
+	endpoints = event['Endpoints']
+	endpointsCount = len(endpoints)
+	#Custom Data Passed: From Email:Message Template Name:PDF Attachment 
+	#binuPazhoor@octankbinumb.awsapps.com:CampaignHookDemoTemplate:Discovery Questionnaire _ Stride Chat App[2] copy.pdf
+	CustomData = event['Data'].split(":")
+	SENDER = CustomData[0]
+	TemplateName = CustomData[1]
+	ObjectName = CustomData[2]
+	ApplicationId = event['ApplicationId']	
+
+	response = getCampaignTemplate(ApplicationId,TemplateName)
+	
+	BODY_HTML = response['EmailTemplateResponse']['HtmlPart']
+	SUBJECT = response['EmailTemplateResponse']['Subject']
+	BODY_TEXT = 'Find attached the requested document'
+	CHARSET = 'utf-8'
+	#Handle and update hard bounce
+	# Attachment from S3.
+	# Handle soft boucne
+	BUCKET_NAME ="pinpoint.segment.bucket.binu.test"
+	KEY = ObjectName
+	FILE_NAME = os.path.basename(KEY) 
+	TMP_FILE_NAME = '/tmp/' +FILE_NAME
+	s3.download_file(BUCKET_NAME, KEY, TMP_FILE_NAME)
+	ATTACHMENT = TMP_FILE_NAME
+	
+	att = MIMEApplication(open(ATTACHMENT, 'rb').read())
+	filename=os.path.basename(ATTACHMENT)
+	
+	SegmentAttributes = extractUserAttributes(BODY_HTML)
+	
+	for item in endpoints:
+		endpointID = item
+		channel = endpoints[endpointID]['ChannelType']
+		RECIPIENT = endpoints[endpointID]['Address']
+		DEBUG = "NO"
+		New_BODY_HTML = SubstituteVariables(BODY_HTML,SegmentAttributes,item,endpoints)
+		sendeMailwithAttachment(SENDER,RECIPIENT,SUBJECT,BODY_TEXT,New_BODY_HTML,att,DEBUG,endpointID,filename,ApplicationId)
+	
+	return
