@@ -1,0 +1,67 @@
+import json
+import boto3
+client = boto3.client('ses')
+
+def writetoS3(Message,SNSMessageID):
+    
+    s3 = boto3.client('s3')
+    json_object = Message
+    s3.put_object(
+         Body=json_object,
+         Bucket='pinpoint.ses.event.tracking.demo',
+         Key=SNSMessageID + '.json'
+    )
+
+
+def lambda_handler(event, context):
+    # TODO implement
+    print (json.dumps(event))
+    
+    Records = event['Records']
+    for record in Records:
+        SNSMessageID = record['Sns']['MessageId']
+        Message =  json.loads(record['Sns']['Message'])
+        print(json.dumps(Message))
+        
+        if not (Message.get('eventType') is None):
+            eventType = Message['eventType']
+        else:
+            eventType = Message['notificationType']
+            
+        MessageID = Message['mail']['messageId']
+        MessageEventTime = Message['mail']['timestamp']
+        MessageDestination = Message['mail']['destination'][0]
+        MessageHeaders = Message['mail']['headers']
+        for header in MessageHeaders:
+            name = header['name']
+            if (name == 'Subject'):
+                MessageSubject = header['value']
+            if (name == 'From'):
+                MessageFrom = header['value']
+        Tags = Message['mail']['tags']
+        for tag in Tags:
+            if (tag == 'UserID'):
+                UserID = Tags[tag][0]
+            if (tag == 'EndpointID'):
+                EndpointID = Tags[tag][0]
+            if (tag == 'CampaignID'):
+                CampaignID = Tags[tag][0]
+            if (tag == 'ApplicationId'):
+                ApplicationId = Tags[tag][0]
+            if (tag == 'ActivityId'):
+                ActivityId = Tags[tag][0]
+
+        
+        EndpointID = EndpointID.replace("SLASH","/")
+        EndpointID = EndpointID.replace("PLUS","+")
+        
+
+        dictionary = {'ApplicationId':ApplicationId,'CampaignID':CampaignID,'ActivityId':ActivityId ,'UserID':UserID, 'EndpointID':EndpointID, 'MessageID':MessageID,'MessageEventTime': MessageEventTime,'eventType':eventType,'MessageFrom':MessageFrom,'MessageDestination':MessageDestination,'MessageSubject':MessageSubject }
+        jsonString = json.dumps(dictionary, indent=4)
+        print(jsonString)
+        response = writetoS3(jsonString,SNSMessageID)
+
+    return {
+        'statusCode': 200,
+        'body': json.dumps('Hello from Lambda!')
+    }
