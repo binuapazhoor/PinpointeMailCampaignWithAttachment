@@ -24,34 +24,34 @@ inserted in that field will be accessible by the AWS Lambda function, which will
 
 Attahced files mechanism:
 
-    Attachment per recipient: Each recipient (endpoint) receives a different file e.g. monthly bill specific to them. The files stored in S3 should have the following naming
-    convention prefix_endpointid.file e.g. OctoberBill_111.pdf. The file prefix can be specified in the AWS Lambda Custom data when building a journey. The AWS Lambda function 
-    builds the S3 object key (file name) by concatenating the file prefix, endpoint id and file type. To select this method, specify ONEPER in the Pinpoint journey Custom data field.
-    Attachment per journey The attachment file name should be the same as the Pinpoint journey Custom data file prefix, the AWS Lambda will concatenate the file prefix 
-    and file type to form the S3 object key. To select this method, specify ONEALL in the Pinpoint journey Custom data.
+Attachment per recipient: Each recipient (endpoint) receives a different file e.g. monthly bill specific to them. The files stored in S3 should have the following naming
+convention prefix_endpointid.file e.g. OctoberBill_111.pdf. The file prefix can be specified in the AWS Lambda Custom data when building a journey. The AWS Lambda function 
+builds the S3 object key (file name) by concatenating the file prefix, endpoint id and file type. To select this method, specify ONEPER in the Pinpoint journey Custom data field.
+Attachment per journey The attachment file name should be the same as the Pinpoint journey Custom data file prefix, the AWS Lambda will concatenate the file prefix 
+and file type to form the S3 object key. To select this method, specify ONEALL in the Pinpoint journey Custom data.
     
-    Pre-signed S3 link: This solution uses the Substitution component of the Amazon Pinpoint SendMessages API operation to dynamically populate the message template with the 
-    S3 pre-signed URL that is passed as a parameter in the request body. Marketers can choose where to place the link in the email template by simply placing {URL} in the Amazon 
-    Pinpoint HTML template as part of the href tag as displayed here: </a href="{URL}">Download the file<//a>. The solution uses {URL} but this can be changed in the code depending 
-    the requirements.
+Pre-signed S3 link: This solution uses the Substitution component of the Amazon Pinpoint SendMessages API operation to dynamically populate the message template with the 
+S3 pre-signed URL that is passed as a parameter in the request body. Marketers can choose where to place the link in the email template by simply placing {URL} in the Amazon 
+Pinpoint HTML template as part of the href tag as displayed here: </a href="{URL}">Download the file<//a>. The solution uses {URL} but this can be changed in the code depending 
+the requirements.
 
 Sending mechanism for file attachments:
 
-    Attachment per recipient: To attach and send one file per recipient the solution calls the Amazon S3 GetObject API operation per endpoint id to obtain the S3 object and the 
-    Amazon SES SendRawEmail API operation to send the email with the attachment. To follow that approach specify ONEPER in the Pinpoint journey Custom data.
-    Attachment per journey: To attach the same file for all the recipients the solution calls only once per AWS Lambda invokation the Amazon S3 GetObject API operation, 
-    creates a list of all the endpoints (max 50) and then calls the Amazon SES SendRawEmail API operation once to send the email with the attachment.To follow that approach 
-    specify ONEALL in the Pinpoint journey Custom data.
+Attachment per recipient: To attach and send one file per recipient the solution calls the Amazon S3 GetObject API operation per endpoint id to obtain the S3 object and the 
+Amazon SES SendRawEmail API operation to send the email with the attachment. To follow that approach specify ONEPER in the Pinpoint journey Custom data.
+Attachment per journey: To attach the same file for all the recipients the solution calls only once per AWS Lambda invokation the Amazon S3 GetObject API operation, 
+creates a list of all the endpoints (max 50) and then calls the Amazon SES SendRawEmail API operation once to send the email with the attachment.To follow that approach 
+specify ONEALL in the Pinpoint journey Custom data.
 
 Considerations
 
-    Events' attribution: Engagement events from the emails sent won't be attributed automatically back to the journey. These events can still be accessed and analysed if streamed 
-    using Amazon Kinesis Firehose. To reconsile the events back to the journey, the solution includes the journey id as trace_id when sent via the SendMessage Pinpoint API operation 
-    and as a tag JourneyId when sent via SES SendRawEmail.
-    No email personalization when attaching a file: Emails with attached files sent via the SES SendRawEmail API operation won't support message helpers for personalisation. 
-    The message template is expected to not have any user or endpoint attributes.
+Events' attribution: Engagement events from the emails sent won't be attributed automatically back to the journey. These events can still be accessed and analysed if streamed 
+using Amazon Kinesis Firehose. To reconsile the events back to the journey, the solution includes the journey id as trace_id when sent via the SendMessage Pinpoint API operation 
+and as a tag JourneyId when sent via SES SendRawEmail.
+No email personalization when attaching a file: Emails with attached files sent via the SES SendRawEmail API operation won't support message helpers for personalisation. 
+The message template is expected to not have any user or endpoint attributes.
     
-    Custom data: The order and spelling of the AWS Lambda Custom data field are key for this solution to function as expected. Each variable is expected to be in the a specific 
-    place and some of them need to be spelled as per the instructions in this GitHub repository e.g. NO, ONEPER, ONEALL and NA. If a Pinpoint journey gets published with the wrong 
-    Custom data then the emails might not be send and it will need to get duplicated and published again.
+Custom data: The order and spelling of the AWS Lambda Custom data field are key for this solution to function as expected. Each variable is expected to be in the a specific 
+place and some of them need to be spelled as per the instructions in this GitHub repository e.g. NO, ONEPER, ONEALL and NA. If a Pinpoint journey gets published with the wrong 
+Custom data then the emails might not be send and it will need to get duplicated and published again.
 
