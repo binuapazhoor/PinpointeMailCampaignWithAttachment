@@ -4,11 +4,11 @@ Amazon Pinpoint currently doesn't support attachments when sending emails via Ca
 
 Email attachments are key to many use cases, some of them are:
 
-    Monthly bills (specific to the recipient)
-    New terms & conditions (same for all)
-    Contracts (specific to the recipient)
-    Booking confirmation (specific to the recipient)
-    e-Tickets (specific to the recipient)
+Monthly bills (specific to the recipient)
+New terms & conditions (same for all)
+Contracts (specific to the recipient)
+Booking confirmation (specific to the recipient)
+e-Tickets (specific to the recipient)
 
 This solution enables marketers to design and schedule Amazon Pinpoint journeys with attachments or pre-signed Amazon S3 URLs without the support of technical resources.
 
